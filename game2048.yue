@@ -1,0 +1,270 @@
+import 'macros' as {$}
+_G.PROJECTNAME, _G.VERSION = $FILE\sub(1,-5), "0.1a(#{$DATE})"
+import 'lib.lume'
+import 'utl' as :pos_in_box, :align, :play
+import 'lib.maid64' -- 改造して高解像度を初期値にした
+-- import 'color' as :sweetie16
+-- luacheck: ignore gifcat
+import 'lib.gifcat' -- 全部に?入れているので、ここ消すだけで使わなくなる
+import 'ui' as :Scene, :Overlay, --[[:DelayCaller,]] :Watchdog
+import 'input' as :input, :SoftGamepad, :vec2LURD
+import 'lib.tween'  -- 改造してdelayを可能にした
+vudu = if DEBUGMODE then require 'lib.vudu' else nil
+inspect = if DEBUGMODE then require 'lib.inspect' else nil
+-- import 'js'
+-- local ^ -- まとめて前方宣言(*か^)
+
+love.window.setTitle(PROJECTNAME .. ' - v' .. VERSION)
+love.window.setMode(600, 920, {resizable: true}) -- androidで`fullscreen: true`にもできるが、スライド動作で盤面も動いてしまうため全画面を外しておく
+maid64.setup(600, 920) -- 600, 961
+love.mouse.getPosition = maid64.mouse.getPosition -- プログラム全体としてmaid64の座標系を使うことにする
+love.touch.getPosition0 or= love.touch.getPosition -- 保存
+love.touch.getPosition = (id)-> maid64.transformPosition(love.touch.getPosition0(id))
+love.audio.setVolume(0.3)
+os.lang = nil -- L''でi18n辞書を参照しない
+macro FONT1 = -> "'assets/fonts/mplus-2p-black-subset.otf'" -- 日本語フォントを削って約1.2M軽量化
+-- if love.system.hasBackgroundMusic() then love.audio.toggleMute() -- うまく動いてない
+-- bgm1 = bgm'assets/sounds/052622ineedtogetouttahere_32k.mp3'
+
+
+Layout = do
+	s1 = align.div_h({0, 0, maid64.sizeX, maid64.sizeY}, {1.0, 1.4, 0.2, 12, 0.4, 1, 3.1}) -- まず縦に７段に分割、隙間を除いた[2],[4],[6]を使う
+	s1[4] = align.center(s1[4], math.min(s1[4][3], s1[4][4]), math.min(s1[4][3], s1[4][4])) -- [4]を正方形にする
+	-- pp s1[4]
+	s2 = align.div_v(s1[2], {0.2, 6, 2, 3, 0.3, 5, 0.4}) -- [2]の段をタイトルとスコアに分ける
+	s2[4].x, s2[4].y = s2[4][1]+s2[4][3] - gr.newFlyweightFont($FONT1, 35)\getWidth(L'Score'..':'), s2[4][2]+s2[4][4] - gr.newFlyweightFont($FONT1, 35)\getHeight()
+	s2[6].y = s2[6][2]+s2[6][4] - gr.newFlyweightFont($FONT1, 58)\getHeight()
+	{title: s2[2], Score: s2[4], score: s2[6], tiles: s1[4], footer: s1[6]}
+
+
+-- タイトル(2048の部分)を長押しでNewGame
+class NewGameButton extends SoftGamepad
+	new: =>
+		super({B: {1, 1, 5, ''}}) -- 丸ボタンでないので仮の値を入れ…
+		input.touch_filters.B = (x, y)-> pos_in_box({x, y}, Layout.title) -- …判定を四角に置き換える
+		-- pp @buttons.B
+	draw: =>
+		return if input.counters.B <= 0
+		a = math.min(input.counters.B/60, 1)
+		-- luacheck: ignore 214
+		-- close _ = {gr.setScissor(10, 10+90*(1-a), 200, 100*a), <close>: => gr.setScissor()}
+		gr.setScissor(Layout.title[1], Layout.title[2]+Layout.title[4]*(1-a), Layout.title[3], Layout.title[4]*a)
+		gr.roundrect10(gr.setColor(gr.uipalette.selected) or 'fill', unpack Layout.title)
+		gr.setScissor()
+
+
+class Notify extends Overlay
+	new: (@text)=>
+		@pos, @opaque = {Layout.score[1]+Layout.score[3]-gr.newFlyweightFont($FONT1)\getWidth(text), Layout.score.y}, 1
+		@tween = tween.new(1.0, @, {pos: {@pos[1], -20}, opaque: 0}, 'inExpo')--'outQuad')
+		super()
+	_update: (dt)=>
+		while not @tween\update(dt)
+			input.idletime = 0
+			_, dt = coroutine.yield()
+	draw: =>
+		gr.print(gr.setFont(gr.newFlyweightFont($FONT1), 24) or gr.setColor({...gr.uipalette.selected, [4]: @opaque}) or @text, unpack @pos)
+
+
+class Game extends Scene
+	@TILE_COUNT: 4
+
+	new: =>
+		@gamepad = NewGameButton()
+		-- savedata = if 'Web' != love.system.getOS() then lume.deserialize(love.filesystem.read(PROJECTNAME..'.save') or '{tiles = {}}') else {tiles: {}}
+		savedata = if love.filesystem.getInfo(PROJECTNAME..'.save') then lume.deserialize(love.filesystem.read(PROJECTNAME..'.save') or '{tiles = {}}') else {tiles: {}}
+		-- pp savedata
+		if #savedata.tiles == @@TILE_COUNT and #savedata.tiles[1] == @@TILE_COUNT
+			{tiles: @tiles, score: @score, time: @time, anims: @anims = {}} = savedata -- 分解代入の初期値を使ってsavedataに無いもの(anims)も作れてしまう
+		else
+			@reset()
+
+	save: => love.filesystem.write(PROJECTNAME..'.save', lume.serialize({tiles: @tiles, score: @score, time: @time}))
+	-- quit: => @save() -- autosave
+	-- focus: (f)=> if not f then @save()  -- androidではquitイベントが来ない？ため
+
+	reset: =>
+		@tiles, @score, @time, @anims = [ [0 for _=1,@@TILE_COUNT] for _=1,@@TILE_COUNT], 0, 0, {}
+		@spawn()
+		@spawn(10)
+		play'assets/sounds/効果音ラボ/決定ボタンを押す8.mp3'
+
+	spawn: (n = if math.random(100) < 10 then 2 else 1)=>
+		try -- すべて埋まっているときにrandomchoiceがエラーを返すため
+			{x, y} = [{i, j} for j, row in ipairs(@tiles) for i, cell in ipairs(row) when cell == 0] |> lume.randomchoice
+			@tiles[y][x] = n
+			@anims[] = with anim = {x, y, num: n, scale:0}
+				.tween = with tween.new(0.4, anim, {scale: 1}, 'outBack')
+					.clock = -0.4
+
+	slide: (dir)=>
+		@anims = {} -- clear
+		newtiles = [ [0 for _=1,@@TILE_COUNT] for _=1,@@TILE_COUNT]
+		fchange, addscore = false, 0
+		recur = (s, d = s)->
+			return if #s < 1
+			if #s>=2 and @tiles[s[1][2]][s[1][1]] == @tiles[s[2][2]][s[2][1]] -- merge
+				newtiles[d[1][2]][d[1][1]] = @tiles[s[1][2]][s[1][1]]+1
+				@anims[] = with anim = {s[1][1], s[1][2], num: @tiles[s[1][2]][s[1][1]]}
+					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+				@anims[] = with anim = {s[2][1], s[2][2], num: @tiles[s[2][2]][s[2][1]]}
+					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+				@anims[] = with anim = {d[1][1], d[1][2], num: @tiles[s[1][2]][s[1][1]]+1, scale: 0}
+					.tween = with tween.new(.4, anim, {scale: 1}, 'outBack')
+						.clock = -0.2
+				fchange = true
+				addscore += 2^(@tiles[s[1][2]][s[1][1]]+1)
+				recur(lume.slice(s, 3), lume.slice(d, 2))
+			else -- slide/stay
+				newtiles[d[1][2]][d[1][1]] = @tiles[s[1][2]][s[1][1]]
+				@anims[] = with anim = {s[1][1], s[1][2], num: @tiles[s[1][2]][s[1][1]]}
+					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+				fchange or= d[1][2] != s[1][2] or d[1][1] != s[1][1]
+				recur(lume.slice(s, 2), lume.slice(d, 2))
+		ss = switch dir
+			when 'left' then [ [{i, j} for i=1,@@TILE_COUNT   ] for j=1,@@TILE_COUNT]
+			when 'up'   then [ [{i, j} for j=1,@@TILE_COUNT   ] for i=1,@@TILE_COUNT]
+			when 'right'then [ [{i, j} for i=@@TILE_COUNT,1,-1] for j=1,@@TILE_COUNT]
+			when 'down' then [ [{i, j} for j=@@TILE_COUNT,1,-1] for i=1,@@TILE_COUNT]
+		for s in *ss
+			recur([c for c in *s when @tiles[c[2]][c[1]]>0], s)
+		if fchange
+			@tiles = newtiles
+			play'assets/sounds/効果音ラボ/決定ボタンを押す42.mp3'
+			@spawn()
+		if addscore > 0
+			@score += addscore
+			Notify('+%d'\format(addscore)) -- クラス内クラスなら @@.Notify('+%d'\format(addscore)) と呼び出す
+
+	update: (dt)=>
+		super()
+		@time += dt --if love.window.hasFocus()
+		if lume.all([a.tween\update(dt) for a in *@anims]) then @anims, _ = {}, @save() else input.idletime = 0 -- lume.allは短絡評価するので先に全部updateする
+		return love.timer.sleep(2/60) if input.idletime>0.10 --and 'battery' == (love.system.getPowerInfo()) -- 省エネモード
+		if input.Br() and input.counters.B <= -60
+			@reset(Notify(L'New Game'))
+			input.counters.B = 0
+		if key := input.arrowkeysp({'left', 'up', 'right', 'down'}) then @slide(key)
+		if input.MLBp()
+			@anims = {}
+			@update = coroutine.wrap(@_updateマウスドラッグ中)
+
+	_updateマウスドラッグ中: (_)=>
+		startpos = {love.mouse.getPosition()}
+		while not input.MLBr()
+			p = {love.mouse.getPosition()}
+			dx, dy = (p[1]-startpos[1]), (p[2]-startpos[2])
+			if dx^2 + dy^2 > 100*100--110*110--128*128
+				@slide(rawget({'left', 'up', 'right', 'down'}, vec2LURD(dx, dy)))
+				break--@update = nil
+			_, dt = coroutine.yield()
+			@time += dt
+			-- @gamepad\update(dt)
+			if input.counters.B > 60 -- リセット
+				@reset(Notify(L'New Game'))
+				input.counters.B = 0
+				break--@update = nil
+		@update = nil
+
+	--
+	-- draw
+	--
+	get_tile_rect: (x, y)=>
+		TILE_SPACING = 14
+		TILE_WIDTH = (Layout.tiles[3] - (@@TILE_COUNT+1)*TILE_SPACING) |>idiv @@TILE_COUNT
+		{Layout.tiles[1] + (x)*TILE_SPACING + (x-1)*TILE_WIDTH, Layout.tiles[2] + (y)*TILE_SPACING + (y-1)*TILE_WIDTH, TILE_WIDTH, TILE_WIDTH}
+
+	draw一つのタイル: (x, y, num, scale = 1, opacity = 1)=>
+		-- if num == 0 then return
+		TILE_COLORS =  { -- fg(text),     bg
+			{{lume.color'#776E65'}, {lume.color'#EEE4DA'}} -- 2
+			{{lume.color'#776E65'}, {lume.color'#EDE0C8'}} -- 4
+			{{lume.color'#FFFFFF'}, {lume.color'#F59563'}} -- 16
+			{{lume.color'#FFFFFF'}, {lume.color'#F67C5F'}} -- 32
+			{{lume.color'#FFFFFF'}, {lume.color'#F65E3B'}} -- 64
+			{{lume.color'#FFFFFF'}, {lume.color'#EDCF72'}} -- 128
+			{{lume.color'#FFFFFF'}, {lume.color'#EDCC61'}} -- 256
+			{{lume.color'#FFFFFF'}, {lume.color'#EDC850'}} -- 512
+			{{lume.color'#FFFFFF'}, {lume.color'#DDB513'}} -- 1024
+			{{lume.color'#FFFFFF'}, {lume.color'#EDC22E'}} }-- 2048
+		rect = @get_tile_rect(x, y)
+		{fg, bg} = TILE_COLORS[math.min(num, #TILE_COLORS)]
+		gr.setFont(gr.newFlyweightFont($FONT1, 36))
+		gr.transform rect[1]+rect[3]/2, rect[2]+rect[4]/2, 0, scale, ->
+			gr.roundrect10(gr.setColor({...bg, [4]:opacity}) or 'fill', unpack {-rect[3]/2,-rect[4]/2,rect[3],rect[4]})
+			gr.print_center(gr.setColor({...fg, [4]:opacity}) or (2^num), {0,0,0,0})
+
+	draw: =>
+		gr.clear(gr.uipalette.base)
+		gr.roundrect10(gr.setColor(gr.uipalette.base) or 'fill', unpack Layout.tiles)
+		for i=1,@@TILE_COUNT do for j=1,@@TILE_COUNT do gr.roundrect10(gr.setColor(gr.uipalette.base2) or 'fill', unpack @get_tile_rect(i, j) )
+		if #@anims > 0 then @draw一つのタイル(x, y, num, scale or 1, opaque or 1) for {x, y, num: num, scale: scale, opaque: opaque} in *@anims -- @animsがある時はそれを表示、なくても正常に動作 -- opaque使ってない
+		else                for y, row in ipairs @tiles do for x, cell in ipairs row do if cell > 0 then @draw一つのタイル(x, y, cell)
+		@gamepad\draw()
+		gr.print_center(gr.setFont(gr.newFlyweightFont($FONT1, 75)) or gr.setColor(gr.uipalette.base2) or '2048', Layout.title)
+		gr.print(gr.setFont(gr.newFlyweightFont($FONT1, 35)) or gr.setColor(gr.uipalette.base2) or L'Score'..':', Layout.Score.x, Layout.Score.y)
+		gr.printf(gr.setFont(gr.newFlyweightFont($FONT1, 58)) or gr.setColor(gr.uipalette.text) or (@score), Layout.score[1], Layout.score.y, Layout.score[3], 'center')
+		@draw_clock()
+	
+	draw_clock: =>
+		gr.print_center(gr.setFont(gr.newFlyweightFont($FONT1)) or gr.setColor(gr.uipalette.text) or "%s % 3d:%02d"\format(L'Time', @time/60, @time%60), Layout.footer)
+
+
+love.draw = -> -- 省エネモード(アニメーションの毎にinput.idletime=0を挟まなければいけないのでGameシーンのみに限定する)
+	@ = Scene.current
+	if --[[@@__name != 'Game' or]] input.idletime < 0.10 --[[: or 'battery' != (love.system.getPowerInfo())]] then
+		return love.draw1()
+	maid64.clearBG()
+	gr.setCanvas(maid64.canvas) -- 時計の部分だけ更新
+	gr.rectangle(gr.setColor(gr.uipalette.base) or 'fill', unpack Layout.footer)
+	@draw_clock()
+	maid64.finish()
+
+
+love.load = ->
+	vudu?.initialize()
+	vudu?.initializeDefaultHotkeys()
+	Game()\attach()
+
+	if DEBUGMODE -- hotswap
+		Watchdog{
+			"#{$FILE}": -> Watchdog.transpile("#{$FILE}", 'main.lua')
+			...Watchdog.InitialTargets}
+	if DEBUGMODE -- build
+		-- os.execute 'rustc -C opt-level=3 --crate-type=cdylib ray.rs' -- android(32bit?)用
+		-- os.execute 'rustc -C opt-level=3 --crate-type=cdylib ray.rs' -- Windows用
+		-- os.execute 'zig build-lib -dynamic -target arm-linux-gnueabi ray.zig' -- android(32bit?)用
+		-- os.execute 'zig build-lib -dynamic -target x86_64-windows ray.zig' -- Windows用
+		-- require('distribute').build('lib/gifcat.lua', 'gifcatlib.so')
+		love.thread.newThread([[
+_G.PROJECTNAME, _G.VERSION, description = ...
+local distribute = require('distribute')
+distribute.build({'lib/gifcat.lua', 'gifcatlib.so', 'gifcatlib.dll', 'js.lua'})
+distribute.modify_index_html(require('lib.os_capture').capture('echo \''..description..'\' | pandoc -f markdown -t html'))
+]])\start PROJECTNAME, VERSION, [[
+
+<style>body{color: #1a1a20; background-color: #fffbe1;}</style>
+<link rel=stylesheet href='https://fonts.googleapis.com/css?family=Roboto:300,300italic,700,700italic'>
+<div class=row><div class='col m12'>
+
+## 操作方法{class=_nightblue}
+
+- 矢印キー or swipe
+- 長押し '2048' to restart.
+
+## Download{class=_warning}
+
+- lastest:
+  - [#{PROJECTNAME}.exe](#{PROJECTNAME}.exe)
+  - [#{PROJECTNAME}.love](#{PROJECTNAME}.love)
+
+## 更新履歴{class=_danger}
+
+- v0.1a 
+
+## License{class=_success}
+
+Zlib/Libpng License.
+
+</div></div>
+]]

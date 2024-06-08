@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, minimum-scale=1, maximum-scale=1">
-    <title>game2048 -v 0.1a(2023-12-23)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>game2048 -v 0.1a(2024-06-08)</title>
 
     <!-- Load custom style sheet -->
-    <link rel="stylesheet" type="text/css" href="theme/love.css">
+	<link rel="stylesheet" type="text/css" href="https://rawgit.com/outboxcraft/beauter/master/beauter.min.css"/>
   </head>
   <body>
     <center>
       <div>
-        <h1>game2048 -v 0.1a(2023-12-23)</h1>
+<p id="header_game2048"></p>
         <canvas id="loadingCanvas" oncontextmenu="event.preventDefault()" width="800" height="600"></canvas>
         <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
       </div>
@@ -104,8 +104,33 @@
     </script>
     <script type="text/javascript" src="game.js"></script>
     <script async type="text/javascript" src="love.js" onload="applicationLoad(this)"></script>
-    <footer>
-      <p>Built with <a href="https://github.com/Davidobot/love.js">love.js</a> <button onclick="goFullScreen();">Go Fullscreen</button><br>Hint: Reload the page if screen is blank</p>
-    </footer>
+
+      <p class=_alignCenter><button class="_small _ripple" onclick="goFullScreen();">Fullscreen</button></p>
+<style>body{color: #1a1a20; background-color: #fffbe1;}</style>
+<link rel=stylesheet href=https://fonts.googleapis.com/css?family=Roboto:300,300italic,700,700italic>
+<div class="row">
+<div class="col" data-m12="">
+<h2 class="_nightblue" id="操作方法">操作方法</h2>
+<ul>
+<li>矢印キー or swipe</li>
+<li>長押し 2048 to restart.</li>
+</ul>
+<h2 class="_warning" id="download">Download</h2>
+<ul>
+<li>lastest:
+<ul>
+<li><a href="#%7BPROJECTNAME%7D.exe">#{PROJECTNAME}.exe</a></li>
+<li><a href="#%7BPROJECTNAME%7D.love">#{PROJECTNAME}.love</a></li>
+</ul></li>
+</ul>
+<h2 class="_danger" id="更新履歴">更新履歴</h2>
+<ul>
+<li>v0.1a</li>
+</ul>
+<h2 class="_success" id="license">License</h2>
+<p>Zlib/Libpng License.</p>
+</div>
+</div>
+
   </body>
-</html>
+</html>
