@@ -1,7 +1,7 @@
 import 'macros' as {$}
 _G.PROJECTNAME, _G.VERSION = $FILE\sub(1,-5), "0.1a(#{$DATE})"
 import 'lib.lume'
-import 'utl' as :pos_in_box, :align, :play
+import 'utl' as :pos_in_box, :align, :play, :L
 import 'lib.maid64' -- 改造して高解像度を初期値にした
 -- import 'color' as :sweetie16
 -- luacheck: ignore gifcat
@@ -22,7 +22,7 @@ love.touch.getPosition0 or= love.touch.getPosition -- 保存
 love.touch.getPosition = (id)-> maid64.transformPosition(love.touch.getPosition0(id))
 love.audio.setVolume(0.3)
 os.lang = nil -- L''でi18n辞書を参照しない
-macro FONT1 = -> "'assets/fonts/mplus-2p-black-subset.otf'" -- 日本語フォントを削って約1.2M軽量化
+macro FONT1 = -> "'assets/fonts/mplus/mplus-2p-black.subset.otf'" -- 日本語フォントを削って約1.2M軽量化
 -- if love.system.hasBackgroundMusic() then love.audio.toggleMute() -- うまく動いてない
 -- bgm1 = bgm'assets/sounds/052622ineedtogetouttahere_32k.mp3'
 
@@ -106,9 +106,9 @@ class Game extends Scene
 			if #s>=2 and @tiles[s[1][2]][s[1][1]] == @tiles[s[2][2]][s[2][1]] -- merge
 				newtiles[d[1][2]][d[1][1]] = @tiles[s[1][2]][s[1][1]]+1
 				@anims[] = with anim = {s[1][1], s[1][2], num: @tiles[s[1][2]][s[1][1]]}
-					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+					.tween = tween.new(.2, anim, {unpack d[1]})--, 'outSine')--'outCirc')
 				@anims[] = with anim = {s[2][1], s[2][2], num: @tiles[s[2][2]][s[2][1]]}
-					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+					.tween = tween.new(.2, anim, {unpack d[1]})--, 'outSine')--'outCirc')
 				@anims[] = with anim = {d[1][1], d[1][2], num: @tiles[s[1][2]][s[1][1]]+1, scale: 0}
 					.tween = with tween.new(.4, anim, {scale: 1}, 'outBack')
 						.clock = -0.2
@@ -118,7 +118,7 @@ class Game extends Scene
 			else -- slide/stay
 				newtiles[d[1][2]][d[1][1]] = @tiles[s[1][2]][s[1][1]]
 				@anims[] = with anim = {s[1][1], s[1][2], num: @tiles[s[1][2]][s[1][1]]}
-					.tween = tween.new(.2, anim, {unpack d[1]}, 'outCirc')
+					.tween = tween.new(.2, anim, {unpack d[1]})--, 'outSine')--'outCirc')
 				fchange or= d[1][2] != s[1][2] or d[1][1] != s[1][1]
 				recur(lume.slice(s, 2), lume.slice(d, 2))
 		ss = switch dir
@@ -140,7 +140,7 @@ class Game extends Scene
 		super()
 		@time += dt --if love.window.hasFocus()
 		if lume.all([a.tween\update(dt) for a in *@anims]) then @anims, _ = {}, @save() else input.idletime = 0 -- lume.allは短絡評価するので先に全部updateする
-		return love.timer.sleep(2/60) if input.idletime>0.10 --and 'battery' == (love.system.getPowerInfo()) -- 省エネモード
+		return love.timer.sleep(2/60) if input.idletime > 0.10 --and 'battery' == (love.system.getPowerInfo()) -- 省エネモード
 		if input.Br() and input.counters.B <= -60
 			@reset(Notify(L'New Game'))
 			input.counters.B = 0
@@ -212,8 +212,7 @@ class Game extends Scene
 
 love.draw = -> -- 省エネモード(アニメーションの毎にinput.idletime=0を挟まなければいけないのでGameシーンのみに限定する)
 	@ = Scene.current
-	if --[[@@__name != 'Game' or]] input.idletime < 0.10 --[[: or 'battery' != (love.system.getPowerInfo())]] then
-		return love.draw1()
+	return love.draw1() if --[[@@__name != 'Game' or]] input.idletime < 0.10 --[[: or 'battery' != (love.system.getPowerInfo())]]
 	maid64.clearBG()
 	gr.setCanvas(maid64.canvas) -- 時計の部分だけ更新
 	gr.rectangle(gr.setColor(gr.uipalette.base) or 'fill', unpack Layout.footer)
@@ -229,7 +228,23 @@ love.load = ->
 	if DEBUGMODE -- hotswap
 		Watchdog{
 			"#{$FILE}": -> Watchdog.transpile("#{$FILE}", 'main.lua')
-			...Watchdog.InitialTargets}
+			'main.lua': -> lume.hotswap('main')
+			'ui.yue': -> @@.transpile('ui.yue')
+			'input.yue': -> @@.transpile('input.yue')
+			-- 'color.yue': -> @@.transpile('color.yue')
+			'utl.yue': -> @@.transpile('utl.yue')
+			-- 'bigmap.yue': -> @@.transpile('bigmap.yue')
+			-- 'BDF.yue': -> @@.transpile('BDF.yue')
+			-- 'distribute.yue': -> @@.transpile('distribute.yue')
+			'main.lua': -> lume.hotswap('main')
+			'input.lua': -> lume.hotswap('input')
+			'ui.lua': -> lume.hotswap('ui')
+			-- 'color.lua': -> lume.hotswap('color')
+			'utl.lua': -> lume.hotswap('utl')
+			-- 'bigmap.lua': -> lume.hotswap('bigmap')
+			-- 'BDF.lua': -> lume.hotswap('BDF')
+			-- 'distribute.lua': -> lume.hotswap('distribute')
+		}
 	if DEBUGMODE -- build
 		-- os.execute 'rustc -C opt-level=3 --crate-type=cdylib ray.rs' -- android(32bit?)用
 		-- os.execute 'rustc -C opt-level=3 --crate-type=cdylib ray.rs' -- Windows用
@@ -239,7 +254,7 @@ love.load = ->
 		love.thread.newThread([[
 _G.PROJECTNAME, _G.VERSION, description = ...
 local distribute = require('distribute')
-distribute.build({'lib/gifcat.lua', 'gifcatlib.so', 'gifcatlib.dll', 'js.lua'})
+distribute.build({'lib/gifcat.lua', 'gifcatlib.so', 'gifcatlib.dll'})
 distribute.modify_index_html(require('lib.os_capture').capture('echo \''..description..'\' | pandoc -f markdown -t html'))
 ]])\start PROJECTNAME, VERSION, [[
 
