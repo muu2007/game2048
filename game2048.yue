@@ -9,9 +9,8 @@ import 'lib.gifcat' -- 全部に?入れているので、ここ消すだけで�
 import 'ui' as :Scene, :Overlay, --[[:DelayCaller,]] :Watchdog
 import 'input' as :input, :SoftGamepad, :vec2LURD
 import 'lib.tween'  -- 改造してdelayを可能にした
+if DEBUGMODE then require 'lib.inspect'
 vudu = if DEBUGMODE then require 'lib.vudu' else nil
-inspect = if DEBUGMODE then require 'lib.inspect' else nil
--- import 'js'
 -- local ^ -- まとめて前方宣言(*か^)
 
 love.window.setTitle(PROJECTNAME .. ' - v' .. VERSION)
@@ -25,7 +24,6 @@ os.lang = nil -- L''でi18n辞書を参照しない
 macro FONT1 = -> "'assets/fonts/mplus/mplus-2p-black.subset.otf'" -- 日本語フォントを削って約1.2M軽量化
 -- if love.system.hasBackgroundMusic() then love.audio.toggleMute() -- うまく動いてない
 -- bgm1 = bgm'assets/sounds/052622ineedtogetouttahere_32k.mp3'
-
 
 Layout = do
 	s1 = align.div_h({0, 0, maid64.sizeX, maid64.sizeY}, {1.0, 1.4, 0.2, 12, 0.4, 1, 3.1}) -- まず縦に７段に分割、隙間を除いた[2],[4],[6]を使う
@@ -228,14 +226,13 @@ love.load = ->
 	if DEBUGMODE -- hotswap
 		Watchdog{
 			"#{$FILE}": -> Watchdog.transpile("#{$FILE}", 'main.lua')
-			'main.lua': -> lume.hotswap('main')
-			'ui.yue': -> @@.transpile('ui.yue')
-			'input.yue': -> @@.transpile('input.yue')
-			-- 'color.yue': -> @@.transpile('color.yue')
-			'utl.yue': -> @@.transpile('utl.yue')
-			-- 'bigmap.yue': -> @@.transpile('bigmap.yue')
-			-- 'BDF.yue': -> @@.transpile('BDF.yue')
-			-- 'distribute.yue': -> @@.transpile('distribute.yue')
+			'ui.yue': -> Watchdog.transpile('ui.yue')
+			'input.yue': -> Watchdog.transpile('input.yue')
+			-- 'color.yue': -> Watchdog.transpile('color.yue')
+			'utl.yue': -> Watchdog.transpile('utl.yue')
+			-- 'bigmap.yue': -> Watchdog.transpile('bigmap.yue')
+			-- 'BDF.yue': -> Watchdog.transpile('BDF.yue')
+			-- 'distribute.yue': -> Watchdog.transpile('distribute.yue')
 			'main.lua': -> lume.hotswap('main')
 			'input.lua': -> lume.hotswap('input')
 			'ui.lua': -> lume.hotswap('ui')
@@ -275,7 +272,7 @@ distribute.modify_index_html(require('lib.os_capture').capture('echo \''..descri
 
 ## 更新履歴{class=_danger}
 
-- v0.1a 
+- v0.1a
 
 ## License{class=_success}
 
