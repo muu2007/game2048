@@ -253,7 +253,7 @@ _G.PROJECTNAME, _G.VERSION, description = ...
 local distribute = require('distribute')
 distribute.build({'lib/gifcat.lua', 'gifcatlib.so', 'gifcatlib.dll'})
 distribute.modify_index_html(require('lib.os_capture').capture('echo \''..description..'\' | pandoc -f markdown -t html'))
-]])\start PROJECTNAME, VERSION, [[
+]])\start PROJECTNAME, VERSION, "
 
 <style>body{color: #1a1a20; background-color: #fffbe1;}</style>
 <link rel=stylesheet href='https://fonts.googleapis.com/css?family=Roboto:300,300italic,700,700italic'>
@@ -266,9 +266,11 @@ distribute.modify_index_html(require('lib.os_capture').capture('echo \''..descri
 
 ## Download{class=_warning}
 
+[Github](https://github.com/muu2007/#{PROJECTNAME})
+
 - lastest:
-  - [#{PROJECTNAME}.exe](#{PROJECTNAME}.exe)
-  - [#{PROJECTNAME}.love](#{PROJECTNAME}.love)
+  - [#{PROJECTNAME}_win64.zip](https://muu2007.github.io/#{PROJECTNAME}/#{PROJECTNAME}_win64.zip)
+  - [#{PROJECTNAME}.love](https://muu2007.github.io/#{PROJECTNAME}/#{PROJECTNAME}.love)
 
 ## 更新履歴{class=_danger}
 
@@ -278,5 +280,4 @@ distribute.modify_index_html(require('lib.os_capture').capture('echo \''..descri
 
 Zlib/Libpng License.
 
-</div></div>
-]]
+</div></div>"
